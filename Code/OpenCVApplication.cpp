@@ -6,18 +6,6 @@
 #include <tesseract/baseapi.h>
 #include <leptonica/allheaders.h>
 
-void testOpenImage()
-{
-	char fname[MAX_PATH];
-	while(openFileDlg(fname))
-	{
-		Mat src;
-		src = imread(fname);
-		imshow("image",src);
-		waitKey();
-	}
-}
-
 void testOpenImagesFld()
 {
 	char folderName[MAX_PATH];
@@ -137,14 +125,22 @@ void testParcurgereSimplaDiblookStyle()
 	}
 }
 
+int isInside(Mat img, int i, int j) {
+	int height = img.rows;
+	int width = img.cols;
+
+	if ((height > i && i >= 0) && ((width > j && j >= 0))) {
+		return 1;
+	}
+
+	return 0;
+}
+
 Mat selectImage()
 {
 	char fname[MAX_PATH];
-	while(openFileDlg(fname))
-	{
-		Mat src = imread(fname);
-		return src;
-	}
+	Mat src = imread(fname);
+	return src;
 }
 
 Mat color2Gray(Mat src)
@@ -237,9 +233,9 @@ char* tesseractExtract(Mat src) {
 		exit(1);
 	}
 	tess->SetImage((uchar*)src.data, src.size().width, src.size().height, src.channels(), src.step1());
+	tess->SetSourceResolution(70);
 	tess->Recognize(0);
 	char* out = tess->GetUTF8Text();
-	printf("SIZE TEXT: $d", strlen(out));
 	
 	// cleanup
 	tess->Clear();
@@ -248,30 +244,371 @@ char* tesseractExtract(Mat src) {
 }
 
 
-void extractTextTest()
-{
-	char fname[MAX_PATH];
-	while (openFileDlg(fname))
-	{
-		Mat src = imread(fname, IMREAD_GRAYSCALE);
-		
-		char* text = tesseractExtract(src);
-		printf("TEXTUL EXTRAS:\n%s", text);
+void extractTextTest(Mat src)
+{		
+	char* text = tesseractExtract(src);
+	printf("%s\n", text);
+	
+}
 
-		imshow("input image", src);
-		waitKey();
+int* histogram(Mat src) {
+
+	int* histValues = (int*)calloc(256, sizeof(int));
+
+	// Asa se acceseaaza pixelii individuali pt. o imagine RGB 24 biti/pixel
+	// Varianta ineficienta (lenta)
+	int height = src.rows;
+	int width = src.cols;
+
+	for (int i = 0; i < height; i++)
+	{
+		for (int j = 0; j < width; j++)
+		{
+			histValues[src.at<uchar>(i, j)]++;
+		}
 	}
+	return histValues;
+}
+
+int getObjectArray(Mat src, int row, int col) {
+	std::queue<Point2i> Q;
+	Q.push(Point(row, col));
+	int count = 0;
+	int dj[8] = { 1,  1,  0, -1, -1, -1, 0, 1 }; // rand (coordonata orizontala)
+	int di[8] = { 0, -1, -1, -1,  0,  1, 1, 1 }; // coloana (coordonata verticala)
+	Mat labelMatrix = Mat::zeros(src.rows, src.cols, CV_8UC1);
+	labelMatrix.at<uchar>(row, col) = 1;
+	while (!Q.empty()) {
+		Point currentPoint = Q.front();
+		Q.pop();
+		int x = currentPoint.x;
+		int y = currentPoint.y;
+		for (int k = 0; k < 8; k++) {
+			if (isInside(src, x + di[k], y + dj[k])) {
+				if (src.at<uchar>(x + di[k], y + dj[k]) == 255 && labelMatrix.at<uchar>(x + di[k], y + dj[k]) == 0) {
+					Q.push(Point(x + di[k], y + dj[k]));
+					labelMatrix.at<uchar>(x + di[k], y + dj[k]) = 1;
+					count++;
+				}
+			}
+		}
+	}
+	return count;
+}
+
+void fillWithBlack(Mat src, int row, int col) {
+	std::queue<Point2i> Q;
+	Q.push(Point(row, col));
+	int count = 0;
+	int dj[8] = { 1,  1,  0, -1, -1, -1, 0, 1 }; // rand (coordonata orizontala)
+	int di[8] = { 0, -1, -1, -1,  0,  1, 1, 1 }; // coloana (coordonata verticala)
+	src.at<uchar>(row, col) = 0;
+	while (!Q.empty()) {
+		Point currentPoint = Q.front();
+		Q.pop();
+		int x = currentPoint.x;
+		int y = currentPoint.y;
+		for (int k = 0; k < 8; k++) {
+			if (isInside(src, x + di[k], y + dj[k])) {
+				if (src.at<uchar>(x + di[k], y + dj[k]) == 255) {
+					Q.push(Point(x + di[k], y + dj[k]));
+					src.at<uchar>(x + di[k], y + dj[k]) = 0;
+				}
+			}
+		}
+	}
+}
+
+
+void getLimitPoints(Mat src, int row, int col, int *minX, int *maxX, int *minY, int *maxY) {
+	std::queue<Point2i> Q;
+	Q.push(Point(row, col));
+	int count = 0;
+	int dj[8] = { 1,  1,  0, -1, -1, -1, 0, 1 }; // rand (coordonata orizontala)
+	int di[8] = { 0, -1, -1, -1,  0,  1, 1, 1 }; // coloana (coordonata verticala)
+	src.at<uchar>(row, col) = 0;
+	while (!Q.empty()) {
+		Point currentPoint = Q.front();
+		if (currentPoint.x < *minX) {
+			*minX = currentPoint.x;
+		}
+		if (currentPoint.x > *maxX) {
+			*maxX = currentPoint.x;
+		}
+		if (currentPoint.y < *minY) {
+			*minY = currentPoint.y;
+		}
+		if (currentPoint.y > *maxY) {
+			*maxY = currentPoint.y;
+		}
+		Q.pop();
+		int x = currentPoint.x;
+		int y = currentPoint.y;
+		for (int k = 0; k < 8; k++) {
+			if (isInside(src, x + di[k], y + dj[k])) {
+				if (src.at<uchar>(x + di[k], y + dj[k]) == 255) {
+					Q.push(Point(x + di[k], y + dj[k]));
+					src.at<uchar>(x + di[k], y + dj[k]) = 0;
+				}
+			}
+		}
+	}
+}
+
+Mat binarizare(Mat src)
+{
+	int height = src.rows;
+	int width = src.cols;
+
+	int* hist = histogram(src);
+
+	int maxInt = -1, minInt = -1;
+	for (int i = 0; i <= 255; i++) {
+		if (hist[i] != 0 && minInt == -1) {
+			minInt = i;
+		}
+		if (hist[255 - i] != 0 && maxInt == -1) {
+			maxInt = 255 - i;
+		}
+	}
+
+	float t = (maxInt + minInt) / 2.0f;
+	float err = 0.1;
+	float prevT = 0;
+
+	while (abs(t - prevT) > err) {
+		int m1 = 0, m2 = 0, n1 = 0, n2 = 0;
+		for (int i = minInt; i <= t; i++) {
+			n1 += hist[i];
+			m1 += hist[i] * i;
+		}
+		m1 /= n1;
+		for (int i = t + 1; i <= maxInt; i++) {
+			n2 += hist[i];
+			m2 += hist[i] * i;
+		}
+		m2 /= n2;
+		prevT = t;
+		t = (m1 + m2) / 2.0f;
+	}
+
+	Mat dst = Mat(height, width, CV_8UC1);
+	for (int i = 0; i < height; i++)
+	{
+		for (int j = 0; j < width; j++)
+		{
+			uchar val = src.at<uchar>(i, j);
+			dst.at<uchar>(i, j) = val < t ? 0 : 255;
+		}
+	}
+
+	return dst;
+		
+}
+
+void showOutline(Point start, std::vector<int> dirs, Mat dst) {
+	Point directions[] = { Point(0, 1),	//0
+							Point(-1, 1),	//1
+							Point(-1, 0) ,	//2
+							Point(-1,-1) ,	//3
+							Point(0, -1) ,	//4
+							Point(1, -1) ,	//5
+							Point(1, 0) ,	//6
+							Point(1, 1) };	//7
+
+	Point currentPoint = start;
+	dst.at<uchar>(currentPoint.x, currentPoint.y) = 0;
+	for (int i = 0; i < dirs.size(); i++) {
+		currentPoint += directions[dirs.at(i)];
+		dst.at<uchar>(currentPoint.x, currentPoint.y) = 0;
+	}
+	imshow("Destination", dst);
+	waitKey();
+}
+
+void getOutline(Mat src) {
+
+	int height = src.rows;
+	int width = src.cols;
+
+	Mat dst = Mat(height, width, CV_8UC1);
+	std::vector<Point > outline;
+
+	Point directions[] = { Point(0, 1),	//0
+							Point(-1, 1),	//1
+							Point(-1, 0) ,	//2
+							Point(-1,-1) ,	//3
+							Point(0, -1) ,	//4
+							Point(1, -1) ,	//5
+							Point(1, 0) ,	//6
+							Point(1, 1) };	//7
+
+	int currentDir = 7, pastDir;
+	std::vector<int > dirs;
+	Point currentPoint = Point(-1, -1);
+	for (int i = 0; i < height; i++)
+	{
+		for (int j = 0; j < width; j++)
+		{
+			if (src.at<uchar>(i, j) == 0) {
+				currentPoint = Point(i, j);
+				outline.push_back(currentPoint);
+				if (currentDir % 2 == 0) {
+					currentDir = (currentDir + 7) % 8;
+				}
+				else {
+					currentDir = (currentDir + 6) % 8;
+				}
+				dirs.push_back(currentDir);
+				break;
+			}
+		}
+		if (outline.size() != 0) {
+			break;
+		}
+	}
+	printf("HERE\n");
+	while (outline.size() < 3 || (outline.at(outline.size() - 1) != outline.at(1) && outline.at(outline.size() - 2) != outline.at(0))) {
+		Point testPoint = currentPoint + directions[currentDir];
+		if (isInside(src, testPoint.x, testPoint.y)) {
+			while (src.at<uchar>(testPoint.x, testPoint.y) != 0) {
+				currentDir = (currentDir + 1) % 8;
+				testPoint = currentPoint + directions[currentDir];
+			}
+			dirs.push_back(currentDir);
+			currentPoint = testPoint;
+			outline.push_back(currentPoint);
+			if (currentDir % 2 == 0) {
+				currentDir = (currentDir + 7) % 8;
+			}
+			else {
+				currentDir = (currentDir + 6) % 8;
+			}
+		}
+	}
+	printf("HERE2\n");
+	printf("\nDirectii:%d, \n", dirs.at(0));
+	for (int i = 1; i < outline.size(); i++) {
+		printf("%d, ", dirs.at(i));
+	}
+	showOutline(outline.at(0), dirs, dst);
+
+	printf("\nDerivata:\n");
+	std::vector<int> derivata;
+	for (int i = 1; i < dirs.size(); i++) {
+		int currentDeriv = dirs.at(i) - dirs.at(i - 1);
+		currentDeriv = currentDeriv < 0 ? 8 + currentDeriv : currentDeriv;
+		derivata.push_back(currentDeriv);
+		printf("%d, ", currentDeriv);
+	}
+}
+
+Mat getIntrestZone(Mat src, Mat binSrc)
+{
+	int height = src.rows;
+	int width = src.cols;
+	int arrayPrediction = width * height / 4;
+	int minX = height;
+	int maxX = 0;
+	int minY = width;
+	int maxY = 0;
+
+	Mat mask = Mat(height, width, CV_8UC1);
+	Mat clone = binSrc.clone();
+	for (int i = 0; i < height; i++) {
+		for (int j = 0; j < width; j++) {
+			if (binSrc.at<uchar>(i, j) == 255) {
+				
+				int currentArray = getObjectArray(clone, i, j);
+				if (currentArray < arrayPrediction) {
+					fillWithBlack(clone, i, j);
+				}
+				else {
+					printf("%d\n", currentArray);
+					getLimitPoints(clone, i, j, &minX, &maxX, &minY, &maxY);
+					printf("minX %d maxX %d minY %d maxY %d\n", minX, maxX, minY, maxY);
+					j = width;
+					i = height;
+				}
+			}
+		}
+	}
+	int finalHeight = maxX - minX;
+	int finalWidth = maxY - minY;
+	Mat dst = Mat(finalHeight, finalWidth, CV_8UC1);
+	for (int i = 0; i < finalHeight; i++) {
+		for (int j = 0; j < finalWidth; j++) {
+			dst.at<uchar>(i, j) = src.at<uchar>(i + minX, j + minY);
+		}
+	}
+	return dst;
+
+}
+
+Mat getZone(Mat src, float xMinScale, float xMaxScale, float yMinScale, float yMaxScale) {
+	int height = src.rows;
+	int width = src.cols;
+	int minX = height / xMinScale;
+	int maxX = height / xMaxScale;
+	int minY = width / yMinScale;
+	int maxY = width / yMaxScale;
+
+	int finalHeight = maxX - minX;
+	int finalWidth = maxY - minY;
+	Mat dst = Mat(finalHeight, finalWidth, CV_8UC1);
+	for (int i = 0; i < finalHeight; i++) {
+		for (int j = 0; j < finalWidth; j++) {
+			dst.at<uchar>(i, j) = src.at<uchar>(i + minX, j + minY);
+		}
+	}
+	return dst;
 }
 
 int main()
 {
-	int op;
-	system("cls");
-	destroyAllWindows();
-	Mat initialImage = selectImage();
-	imshow("input image", initialImage);
-	Mat grayImage = color2Gray(initialImage);
-	imshow("gray Image", grayImage);
-	waitKey();
+	char fname[MAX_PATH];
+	while (openFileDlg(fname))
+	{
+		system("cls");
+		destroyAllWindows();
+		//Get the image
+		Mat resizedImage;
+		Mat blurredImage;
+		Mat src = imread(fname);
+
+
+		//imshow("input image", src);
+		//resizeImg(src, resizedImage, 1200, false);
+		//GaussianBlur(resizedImage, blurredImage, Size(5, 5), 0);
+		GaussianBlur(src, blurredImage, Size(5, 5), 0);
+
+
+		//transform it into a black and white image
+		Mat grayImage = color2Gray(blurredImage);
+		//imshow("gray Image", grayImage);
+		//extractTextTest(grayImage);
+		
+		//binarize the image
+		Mat binImage = binarizare(grayImage);
+		//imshow("Binary image", binImage);
+		//extractTextTest(binImage);
+		
+		Mat intrestZone = getIntrestZone(grayImage, binImage);
+		imshow("Interest zone", intrestZone);
+		//extractTextTest(intrestZone);
+
+		Mat CNP = getZone(intrestZone, 5.5, 3.9, 2.76, 1.67);
+		imshow("CNP zone", CNP);
+		printf("CNP: ");
+		extractTextTest(CNP);
+
+		Mat NUME = getZone(intrestZone, 3.74, 3.07, 3.23, 2.4);
+		imshow("NUME", NUME);
+		printf("Nume: ");
+		extractTextTest(NUME);
+		//getOutline(binImage);
+		
+		waitKey();
+	}
 	return 0;
 }
