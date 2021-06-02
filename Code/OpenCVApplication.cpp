@@ -247,7 +247,7 @@ char* tesseractExtract(Mat src) {
 void extractTextTest(Mat src)
 {		
 	char* text = tesseractExtract(src);
-	printf("%s\n", text);
+	printf("%s", text);
 	
 }
 
@@ -597,17 +597,36 @@ int main()
 		imshow("Interest zone", intrestZone);
 		//extractTextTest(intrestZone);
 
-		Mat CNP = getZone(intrestZone, 5.5, 3.9, 2.76, 1.67);
+		Mat SERIE_NR = getZone(intrestZone, 6.7, 5.11, 1.73, 1.24);
+		imshow("SERIE_NR", SERIE_NR);
+		extractTextTest(SERIE_NR);
+
+		Mat CNP = getZone(intrestZone, 5.5, 3.9, 2.76, 1.5);
 		imshow("CNP zone", CNP);
 		printf("CNP: ");
 		extractTextTest(CNP);
 
-		Mat NUME = getZone(intrestZone, 3.74, 3.07, 3.23, 2.4);
+		Mat NUME = getZone(intrestZone, 3.74, 3.2, 3.23, 1.5);
 		imshow("NUME", NUME);
 		printf("Nume: ");
 		extractTextTest(NUME);
 		//getOutline(binImage);
-		
+
+		Mat PRENUME = getZone(intrestZone, 3, 2.58, 3.23, 1.5);
+		imshow("PRENUME", PRENUME);
+		printf("Prenume: ");
+		extractTextTest(PRENUME);
+
+		Mat CETATENIE = getZone(intrestZone, 2.47, 2.17, 3.23, 1.5);
+		imshow("CETATENIE", CETATENIE);
+		printf("Cetatenie: ");
+		extractTextTest(CETATENIE);
+
+		Mat LOC_NASTERE = getZone(intrestZone, 2.09, 1.88, 3.23, 1.5);
+		imshow("LOC_NASTERE", LOC_NASTERE);
+		printf("Loc Nastere: ");
+		extractTextTest(LOC_NASTERE);
+
 		waitKey();
 	}
 	return 0;
