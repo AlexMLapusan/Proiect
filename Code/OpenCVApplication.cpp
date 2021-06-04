@@ -590,7 +590,7 @@ int main()
 		
 		//binarize the image
 		Mat binImage = binarizare(grayImage);
-		//imshow("Binary image", binImage);
+		imshow("Binary image", binImage);
 		//extractTextTest(binImage);
 		
 		Mat intrestZone = getIntrestZone(grayImage, binImage);
